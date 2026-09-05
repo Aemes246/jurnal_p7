@@ -103,17 +103,41 @@ class HabitService extends GetxService {
   /// Fetch habit_logs & teacher_notes 100% online from Supabase Cloud Database
   Future<void> fetchLogsFromSupabase() async {
     try {
+      List<dynamic> response = [];
       final client = SupabaseProvider.client;
       if (client != null) {
-        final List<dynamic> response = await client.from('habit_logs').select();
+        try {
+          response = await client.from('habit_logs').select();
+        } catch (e) {
+          debugPrint('client.from(habit_logs) error: $e');
+        }
+      }
+      if (response.isEmpty) {
+        response = await SupabaseProvider.restGet('habit_logs');
+      }
+
+      if (response.isNotEmpty) {
         final loadedLogs = response.map((item) => HabitLogModel.fromJson(item)).toList();
         habitLogs.assignAll(loadedLogs);
         habitLogs.refresh();
         _syncToMemoryCache();
         await saveLogsToStorage();
         refreshHabitsForSelectedDate();
+      }
 
-        final List<dynamic> notesRes = await client.from('teacher_notes').select();
+      List<dynamic> notesRes = [];
+      if (client != null) {
+        try {
+          notesRes = await client.from('teacher_notes').select();
+        } catch (e) {
+          debugPrint('client.from(teacher_notes) error: $e');
+        }
+      }
+      if (notesRes.isEmpty) {
+        notesRes = await SupabaseProvider.restGet('teacher_notes');
+      }
+
+      if (notesRes.isNotEmpty) {
         final loadedNotes = notesRes.map((item) => TeacherNoteModel.fromJson(item)).toList();
         teacherNotes.assignAll(loadedNotes);
         teacherNotes.refresh();

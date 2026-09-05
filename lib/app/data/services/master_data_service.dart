@@ -166,11 +166,21 @@ class MasterDataService extends GetxService {
   Future<List<UserModel>> fetchTeachersFromSupabase() async {
     try {
       isLoadingTeachers.value = true;
+      List<dynamic> response = [];
       final client = SupabaseProvider.client;
       if (client != null) {
-        final response = await client.from('teachers').select();
+        try {
+          response = await client.from('teachers').select();
+        } catch (e) {
+          debugPrint('client.from(teachers) error: $e');
+        }
+      }
+      if (response.isEmpty) {
+        response = await SupabaseProvider.restGet('teachers');
+      }
 
-        final List<UserModel> loaded = (response as List).map((item) {
+      if (response.isNotEmpty) {
+        final List<UserModel> loaded = response.map((item) {
           return UserModel(
             id: item['id'] ?? '',
             email: item['email'] ?? '',
@@ -199,65 +209,80 @@ class MasterDataService extends GetxService {
   Future<List<UserModel>> fetchStudentsFromSupabase() async {
     try {
       isLoadingStudents.value = true;
+      final Map<String, UserModel> studentMap = {};
       final client = SupabaseProvider.client;
-      if (client != null) {
-        final Map<String, UserModel> studentMap = {};
 
-        // 1. Fetch from students table
+      // 1. Fetch from students table
+      List<dynamic> studentResponse = [];
+      if (client != null) {
         try {
-          final response = await client.from('students').select();
-          for (var item in (response as List)) {
-            final u = UserModel(
-              id: item['id'] ?? '',
-              email: item['email'] ?? '',
-              name: item['name'] ?? '',
-              role: 'siswa',
-              nis: item['nis'] ?? '-',
-              nisn: item['nisn'] ?? '-',
-              className: item['class_name'] ?? 'X DKV 1',
-              phone: item['phone'] ?? '0812-3456-7890',
-              religion: item['religion'] ?? 'Islam',
-              address: item['address'] ?? '-',
-              hobby: item['hobby'] ?? '-',
-              ambition: item['ambition'] ?? '-',
-              favoriteSport: item['favorite_sport'] ?? '-',
-              favoriteFood: item['favorite_food'] ?? '-',
-              favoriteSubject: item['favorite_subject'] ?? '-',
-              uniqueness: item['uniqueness'] ?? '-',
-              homeroomTeacher: item['homeroom_teacher'] ?? item['wali_kelas'] ?? 'Saiful Anwar., S.Kom.,Gr',
-              waliKelas: item['wali_kelas'] ?? item['homeroom_teacher'] ?? 'Saiful Anwar., S.Kom.,Gr',
-              totalStreak: item['total_streak'] ?? 0,
-              totalPoints: item['total_points'] ?? 0,
-              createdAt: DateTime.now(),
-            );
-            final key = (u.nisn != null && u.nisn!.isNotEmpty) ? u.nisn! : u.id;
+          studentResponse = await client.from('students').select();
+        } catch (e) {
+          debugPrint('client.from(students) error: $e');
+        }
+      }
+      if (studentResponse.isEmpty) {
+        studentResponse = await SupabaseProvider.restGet('students');
+      }
+
+      for (var item in studentResponse) {
+        final u = UserModel(
+          id: item['id'] ?? '',
+          email: item['email'] ?? '',
+          name: item['name'] ?? '',
+          role: 'siswa',
+          nis: item['nis'] ?? '-',
+          nisn: item['nisn'] ?? '-',
+          className: item['class_name'] ?? 'X DKV 1',
+          phone: item['phone'] ?? '0812-3456-7890',
+          religion: item['religion'] ?? 'Islam',
+          address: item['address'] ?? '-',
+          hobby: item['hobby'] ?? '-',
+          ambition: item['ambition'] ?? '-',
+          favoriteSport: item['favorite_sport'] ?? '-',
+          favoriteFood: item['favorite_food'] ?? '-',
+          favoriteSubject: item['favorite_subject'] ?? '-',
+          uniqueness: item['uniqueness'] ?? '-',
+          homeroomTeacher: item['homeroom_teacher'] ?? item['wali_kelas'] ?? 'Saiful Anwar., S.Kom.,Gr',
+          waliKelas: item['wali_kelas'] ?? item['homeroom_teacher'] ?? 'Saiful Anwar., S.Kom.,Gr',
+          totalStreak: item['total_streak'] ?? 0,
+          totalPoints: item['total_points'] ?? 0,
+          createdAt: DateTime.now(),
+        );
+        final key = (u.nisn != null && u.nisn!.isNotEmpty) ? u.nisn! : u.id;
+        studentMap[key] = u;
+      }
+
+      // 2. Fetch from profiles table (where role = 'siswa')
+      List<dynamic> profRes = [];
+      if (client != null) {
+        try {
+          profRes = await client.from('profiles').select().eq('role', 'siswa');
+        } catch (e) {
+          debugPrint('client.from(profiles) error: $e');
+        }
+      }
+      if (profRes.isEmpty) {
+        final allProfiles = await SupabaseProvider.restGet('profiles');
+        profRes = allProfiles.where((p) => p['role'] == 'siswa').toList();
+      }
+
+      for (var item in profRes) {
+        try {
+          final u = UserModel.fromJson(item);
+          final key = (u.nisn != null && u.nisn!.isNotEmpty) ? u.nisn! : u.id;
+          if (!studentMap.containsKey(key)) {
             studentMap[key] = u;
           }
-        } catch (e) {
-          debugPrint('Error fetching from students table: $e');
-        }
-
-        // 2. Fetch from profiles table (where role = 'siswa')
-        try {
-          final profRes = await client.from('profiles').select().eq('role', 'siswa');
-          for (var item in (profRes as List)) {
-            final u = UserModel.fromJson(item);
-            final key = (u.nisn != null && u.nisn!.isNotEmpty) ? u.nisn! : u.id;
-            if (!studentMap.containsKey(key)) {
-              studentMap[key] = u;
-            }
-          }
-        } catch (e) {
-          debugPrint('Error fetching from profiles table: $e');
-        }
-
-        final List<UserModel> loaded = studentMap.values.toList();
-        if (loaded.isNotEmpty) {
-          supabaseStudents.assignAll(loaded);
-          supabaseStudents.refresh();
-        }
-        return loaded;
+        } catch (_) {}
       }
+
+      final List<UserModel> loaded = studentMap.values.toList();
+      if (loaded.isNotEmpty) {
+        supabaseStudents.assignAll(loaded);
+        supabaseStudents.refresh();
+      }
+      return loaded;
     } catch (e) {
       debugPrint('Error fetching students from Supabase: $e');
     } finally {
@@ -269,10 +294,20 @@ class MasterDataService extends GetxService {
   /// Fetch master classes from Supabase `classes` table
   Future<void> fetchClassesFromSupabase() async {
     try {
+      List<dynamic> response = [];
       final client = SupabaseProvider.client;
       if (client != null) {
-        final response = await client.from('classes').select();
-        supabaseClasses.assignAll((response as List).cast<Map<String, dynamic>>());
+        try {
+          response = await client.from('classes').select();
+        } catch (e) {
+          debugPrint('client.from(classes) error: $e');
+        }
+      }
+      if (response.isEmpty) {
+        response = await SupabaseProvider.restGet('classes');
+      }
+      if (response.isNotEmpty) {
+        supabaseClasses.assignAll(response.cast<Map<String, dynamic>>());
       }
     } catch (e) {
       debugPrint('Error fetching classes from Supabase: $e');
@@ -282,10 +317,20 @@ class MasterDataService extends GetxService {
   /// Fetch teacher-student assignments from `teacher_student_assignments`
   Future<void> fetchAssignmentsFromSupabase() async {
     try {
+      List<dynamic> response = [];
       final client = SupabaseProvider.client;
       if (client != null) {
-        final response = await client.from('teacher_student_assignments').select();
-        teacherStudentAssignments.assignAll((response as List).cast<Map<String, dynamic>>());
+        try {
+          response = await client.from('teacher_student_assignments').select();
+        } catch (e) {
+          debugPrint('client.from(assignments) error: $e');
+        }
+      }
+      if (response.isEmpty) {
+        response = await SupabaseProvider.restGet('teacher_student_assignments');
+      }
+      if (response.isNotEmpty) {
+        teacherStudentAssignments.assignAll(response.cast<Map<String, dynamic>>());
       }
     } catch (e) {
       debugPrint('Error fetching assignments from Supabase: $e');
