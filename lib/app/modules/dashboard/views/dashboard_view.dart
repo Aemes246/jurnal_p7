@@ -869,6 +869,12 @@ class DashboardView extends GetView<DashboardController> {
                     icon: const Icon(Icons.refresh_rounded, color: Colors.indigo, size: 22),
                     tooltip: 'Refresh Data Real-Time',
                     onPressed: () async {
+                      if (masterData != null) {
+                        await masterData.fetchStudentsFromSupabase();
+                        await masterData.fetchTeachersFromSupabase();
+                        await masterData.fetchAssignmentsFromSupabase();
+                        await masterData.fetchClassesFromSupabase();
+                      }
                       await habitService.loadLogsFromStorage();
                       await habitService.fetchFromSyncServer();
                       Get.snackbar(
